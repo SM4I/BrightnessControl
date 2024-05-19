@@ -20,15 +20,62 @@
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 
+#ifdef _DEBUG
+void LOG()
+{
+	std::wcout << '\n';
+}
+template<typename T, typename... Args>
+void LOG(const T& t, const Args&... args)
+{
+	std::wcout << t << " ";
+	LOG(args...);
+}
+#else
+template<typename T, typename... Args>
+void LOG(const T& t, const Args&... args)
+{
+}
+#endif
 
 #define ID_TRAY_APP_ICON 5000
 #define WM_TRAYICON (WM_USER + 1)
 #define IDS_TOOLTIP 111
-#define FPS 32.0f
+#define FPS 20.0f
 
 const int main_window_width = 500;
 const int main_window_height = 100;
 
+std::string ExecutablePath = "";
+
+std::string GetExecutablePath()
+{
+	if (ExecutablePath.size() != 0) return ExecutablePath;
+
+	char exePath[MAX_PATH];
+	GetModuleFileNameA(NULL, exePath, MAX_PATH);
+
+	std::string executablePath(exePath);
+	size_t pos = executablePath.find_last_of("\\/");
+	assert(pos != std::string::npos);
+
+	ExecutablePath = executablePath.substr(0, pos + 1);
+	return ExecutablePath;
+}
+
+std::string GetImGuiIniPath()
+{
+	std::string imguiIniDir(GetExecutablePath() + "imgui.ini");
+	LOG("IMGUI INI FILE: ", imguiIniDir.c_str());
+	return imguiIniDir;
+}
+
+std::string GetTTFFontFile()
+{
+	std::string fontPath(GetExecutablePath() + "NotoSansDisplay_Regular.ttf");
+	LOG("USING FONT: ", fontPath.c_str());
+	return fontPath;
+}
 
 void MoveMainWindowToBottomRight(GLFWwindow* window)
 {
@@ -71,8 +118,9 @@ namespace TrayIcon
 		while (GetMessage(&msg, NULL, 0, 0)) {
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
-			if(mainWindow)
+			if (mainWindow)
 				if (glfwWindowShouldClose(mainWindow)) return;
+			std::this_thread::sleep_for(std::chrono::milliseconds(int(1000.0f / FPS)));
 		}
 	}
 
@@ -124,11 +172,8 @@ namespace TrayIcon
 		case WM_COMMAND:
 			switch (LOWORD(wParam)) {
 				// Handle menu item events here
-				// ...
 			case IDM_EXIT_COMMAND: {
-				//PostMessage(hwnd, WM_CLOSE, 0, 0);
 				glfwSetWindowShouldClose(mainWindow, true);
-
 				break;
 			}
 			}
@@ -173,6 +218,20 @@ void window_focus_callback(GLFWwindow* window, int focused)
 	}
 }
 
+namespace Monitor
+{
+	bool SetBrightness(PHYSICAL_MONITOR* physical_monitor, int brightness)
+	{
+		HANDLE physical_monitor_handle = physical_monitor->hPhysicalMonitor;
+		return SetMonitorBrightness(physical_monitor_handle, (DWORD)brightness);
+	}
+
+	bool IsChangingBrightnessSupported()
+	{
+		return true;
+	}
+}
+
 void MainWindowThread()
 {
 #ifdef _DEBUG
@@ -194,20 +253,23 @@ void MainWindowThread()
 
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
+
+	std::string imguiIniFilePath = GetImGuiIniPath();
+
 	ImGuiIO& io = ImGui::GetIO(); (void)io;
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+	io.IniFilename = imguiIniFilePath.c_str();
+
 
 	ImGui::StyleColorsDark();
 
 	ImGui_ImplGlfw_InitForOpenGL(window, true);
 	ImGui_ImplOpenGL3_Init("#version 330 core");
 
-	ImFont* font = io.Fonts->AddFontFromFileTTF("NotoSansDisplay_Regular.ttf", 18.0f);
+	ImFont* font = io.Fonts->AddFontFromFileTTF(GetTTFFontFile().c_str(), 18.0f);
 	assert(font != nullptr);
 
-	HWND desktopHWND = GetDesktopWindow();
-	HMONITOR monitor = MonitorFromWindow(desktopHWND, MONITOR_DEFAULTTOPRIMARY);
-
+	HMONITOR monitor = MonitorFromWindow(GetDesktopWindow(), MONITOR_DEFAULTTOPRIMARY);
 	DWORD number_of_physical_monitors;
 	GetNumberOfPhysicalMonitorsFromHMONITOR(monitor, &number_of_physical_monitors);
 
@@ -246,9 +308,7 @@ void MainWindowThread()
 		ImGui::SetWindowSize({ main_window_width, main_window_height }, 0);
 
 		ImGui::Begin("Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove);
-
 		ImGui::Checkbox("Change Immediately(Not Recommended)", &change_immediately);
-
 		ImGui::BeginTable("Table", 2, ImGuiTableFlags_Resizable);
 		ImGui::PushItemWidth(30);
 		ImGui::TableNextColumn();
@@ -262,23 +322,20 @@ void MainWindowThread()
 		ImGui::PopItemWidth();
 		ImGui::EndTable();
 		ImGui::End();
+
 		ImGui::PopFont();
+
 		if (brightness_in_last_frame == brightness)
-		{
-			should_change_brightness.push_back(1);
-		}
+			should_change_brightness.push_back(1);				// fill vector if brightness value stays same
 		else
-		{
-			std::vector<char>().swap(should_change_brightness);
-		}
+			std::vector<char>().swap(should_change_brightness); // empty the vector
+
 		if (should_change_brightness.size() > (2 + 18 * !change_immediately) && current_brightness != physical_monitor_brightness)
 		{
 			std::vector<char>().swap(should_change_brightness);
 			physical_monitor_brightness = current_brightness;
 			SetMonitorBrightness(physical_monitor_handle, (DWORD)physical_monitor_brightness);
-#ifdef _DEBUG
-			std::cout << "change\n";
-#endif
+			LOG("change");
 		}
 
 		ImGui::Render();
@@ -290,7 +347,6 @@ void MainWindowThread()
 		glfwSwapBuffers(window);
 		std::this_thread::sleep_for(std::chrono::milliseconds((int)(1000.0f / FPS) - 5));
 	}
-
 }
 
 int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
