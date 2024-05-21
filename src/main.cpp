@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <thread>
+#include <mutex>
 #include <vector>
 #include <cassert>
 
@@ -41,12 +42,14 @@ void LOG(const T& t, const Args&... args)
 #define ID_TRAY_APP_ICON 5000
 #define WM_TRAYICON (WM_USER + 1)
 #define IDS_TOOLTIP 111
-#define FPS 20.0f
+#define FPS 33.0f
 
 const int main_window_width = 500;
 const int main_window_height = 100;
 
 std::string ExecutablePath = "";
+
+std::atomic_bool isMainWindowHidden = false;
 
 std::string GetExecutablePath()
 {
@@ -186,6 +189,7 @@ namespace TrayIcon
 				break;
 			}
 			case WM_LBUTTONUP:
+				isMainWindowHidden = false;
 				ShowWindow(mainWindowHandle, SW_SHOW);
 				glfwFocusWindow(mainWindow);
 				break;
@@ -193,6 +197,7 @@ namespace TrayIcon
 			break;
 
 		case WM_CLOSE:
+			isMainWindowHidden = true;
 			ShowWindow(hwnd, SW_HIDE);
 			break;
 
@@ -210,11 +215,13 @@ void window_focus_callback(GLFWwindow* window, int focused)
 	{
 		//	window gained focus
 		glfwShowWindow(window);
+		isMainWindowHidden = false;
 	}
 	else
 	{
 		//	window lost focus
 		glfwHideWindow(window);
+		isMainWindowHidden = true;
 	}
 }
 
@@ -296,6 +303,9 @@ void MainWindowThread()
 	std::vector<char> should_change_brightness;
 	while (!glfwWindowShouldClose(window))
 	{
+		std::this_thread::sleep_for(std::chrono::milliseconds((int)(1000.0f / FPS) - 5));
+		if (isMainWindowHidden) continue;
+
 		glfwPollEvents();
 		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT);
@@ -345,7 +355,6 @@ void MainWindowThread()
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
 		glfwSwapBuffers(window);
-		std::this_thread::sleep_for(std::chrono::milliseconds((int)(1000.0f / FPS) - 5));
 	}
 }
 
