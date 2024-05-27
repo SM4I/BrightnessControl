@@ -62,8 +62,7 @@ std::string GetExecutablePath()
 	size_t pos = executablePath.find_last_of("\\/");
 	assert(pos != std::string::npos);
 
-	ExecutablePath = executablePath.substr(0, pos + 1);
-	return ExecutablePath;
+	return ExecutablePath = executablePath.substr(0, pos + 1);
 }
 
 std::string GetImGuiIniPath()
@@ -239,13 +238,8 @@ namespace Monitor
 	}
 }
 
-void MainWindowThread()
+GLFWwindow* StartGLFW()
 {
-#ifdef _DEBUG
-	AllocConsole();
-	FILE* dummy;
-	freopen_s(&dummy, "CONOUT$", "w", stdout);
-#endif
 	glfwInit();
 	glfwWindowHint(GLFW_DECORATED, GL_FALSE);
 
@@ -257,7 +251,17 @@ void MainWindowThread()
 	ShowWindow(mainWindowHandle, SW_HIDE);
 	glfwMakeContextCurrent(window);
 	MoveMainWindowToBottomRight(window);
+	return window;
+}
 
+void MainWindowThread()
+{
+#ifdef _DEBUG
+	AllocConsole();
+	FILE* dummy;
+	freopen_s(&dummy, "CONOUT$", "w", stdout);
+#endif
+	GLFWwindow* window = StartGLFW();
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 
@@ -304,7 +308,7 @@ void MainWindowThread()
 	while (!glfwWindowShouldClose(window))
 	{
 		std::this_thread::sleep_for(std::chrono::milliseconds((int)(1000.0f / FPS) - 5));
-		if (isMainWindowHidden) continue;
+		if (isMainWindowHidden && (current_brightness == physical_monitor_brightness)) continue;
 
 		glfwPollEvents();
 		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
