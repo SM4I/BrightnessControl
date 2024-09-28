@@ -45,7 +45,7 @@ void LOG(const T& t, const Args&... args)
 #define FPS 33.0f
 
 const int main_window_width = 500;
-const int main_window_height = 100;
+const int main_window_height = 80;
 
 std::string ExecutablePath = "";
 
@@ -319,7 +319,6 @@ void MainWindowThread()
 		ImGui::NewFrame();
 
 		ImGui::PushFont(font);
-		ImGui::SetWindowSize({ main_window_width, main_window_height }, 0);
 
 		ImGui::Begin("Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove);
 		ImGui::Checkbox("Change Immediately(Not Recommended)", &change_immediately);

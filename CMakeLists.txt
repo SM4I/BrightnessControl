@@ -22,6 +22,7 @@ if(WIN32)
 		COMMAND ${CMAKE_COMMAND} -E copy
 			"${CMAKE_SOURCE_DIR}/src/logo.ico"
 			"${CMAKE_SOURCE_DIR}/src/NotoSansDisplay_Regular.ttf"
+			"${CMAKE_SOURCE_DIR}/src/imgui.ini"
 			$<TARGET_FILE_DIR:BSA>)
 
 	target_sources(BSA PRIVATE src/app_icon.rc)
