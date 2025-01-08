@@ -48,7 +48,6 @@ const int main_window_width = 500;
 const int main_window_height = 80;
 
 std::string ExecutablePath = "";
-
 std::atomic_bool isMainWindowHidden = false;
 
 std::string GetExecutablePath()
@@ -226,6 +225,40 @@ void window_focus_callback(GLFWwindow* window, int focused)
 
 namespace Monitor
 {
+	struct MonitorInfo			// wrapper for PHYSICAL_MONITOR
+	{
+		PHYSICAL_MONITOR* Ptr;
+		std::wstring Name;
+		HANDLE Handle;
+	};
+
+	std::vector<MonitorInfo> PhysicalMonitorArray;
+	int physicalMonitorCount = 0;
+
+	int CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM dwData)
+	{
+		DWORD physicalMonitorsinCurrentHmonitor = 0;
+
+		GetNumberOfPhysicalMonitorsFromHMONITOR(hMonitor, &physicalMonitorsinCurrentHmonitor);
+		PHYSICAL_MONITOR* physicalMonitor = new PHYSICAL_MONITOR[physicalMonitorsinCurrentHmonitor];
+
+		if (GetPhysicalMonitorsFromHMONITOR(hMonitor, physicalMonitorsinCurrentHmonitor, physicalMonitor))
+		{
+			for (int i = 0; i < physicalMonitorsinCurrentHmonitor; i++)
+			{
+				MonitorInfo currentMonitor;
+				currentMonitor.Ptr = &physicalMonitor[i];
+				currentMonitor.Handle = currentMonitor.Ptr->hPhysicalMonitor;
+				currentMonitor.Name = currentMonitor.Ptr->szPhysicalMonitorDescription;
+
+				LOG("\tFound Monitor ", ++physicalMonitorCount, " : ", currentMonitor.Name,'\n');
+
+				PhysicalMonitorArray.push_back(currentMonitor);
+			}
+		}
+		return 1;
+	}
+
 	bool SetBrightness(PHYSICAL_MONITOR* physical_monitor, int brightness)
 	{
 		HANDLE physical_monitor_handle = physical_monitor->hPhysicalMonitor;
@@ -280,16 +313,21 @@ void MainWindowThread()
 	ImFont* font = io.Fonts->AddFontFromFileTTF(GetTTFFontFile().c_str(), 18.0f);
 	assert(font != nullptr);
 
-	HMONITOR monitor = MonitorFromWindow(GetDesktopWindow(), MONITOR_DEFAULTTOPRIMARY);
-	DWORD number_of_physical_monitors;
-	GetNumberOfPhysicalMonitorsFromHMONITOR(monitor, &number_of_physical_monitors);
+	EnumDisplayMonitors(NULL, NULL, Monitor::MonitorEnumProc, 0);
 
-	PHYSICAL_MONITOR* physical_monitor_array = (PHYSICAL_MONITOR*)malloc(sizeof(PHYSICAL_MONITOR) * number_of_physical_monitors);
-	GetPhysicalMonitorsFromHMONITOR(monitor, number_of_physical_monitors, physical_monitor_array);
+	//HMONITOR monitor = MonitorFromWindow(GetDesktopWindow(), MONITOR_DEFAULTTOPRIMARY);
+	//DWORD number_of_physical_monitors;
+	//GetNumberOfPhysicalMonitorsFromHMONITOR(monitor, &number_of_physical_monitors);
+	//
+	//PHYSICAL_MONITOR* physical_monitor_array = (PHYSICAL_MONITOR*)malloc(sizeof(PHYSICAL_MONITOR) * number_of_physical_monitors);
+	//GetPhysicalMonitorsFromHMONITOR(monitor, number_of_physical_monitors, physical_monitor_array);
+
+
 
 	DWORD monitor_capabilities, colour_temperatures;
 
-	HANDLE physical_monitor_handle = physical_monitor_array[0].hPhysicalMonitor;
+	//HANDLE physical_monitor_handle = physical_monitor_array[0].hPhysicalMonitor;
+	HANDLE physical_monitor_handle = Monitor::PhysicalMonitorArray[0].Ptr->hPhysicalMonitor;
 	GetMonitorCapabilities(physical_monitor_handle, &monitor_capabilities, &colour_temperatures);
 	assert(monitor_capabilities & MC_CAPS_BRIGHTNESS && "your monitor doesnt support dcc/ci");
 
