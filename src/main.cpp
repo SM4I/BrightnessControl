@@ -48,7 +48,7 @@ void LOG(const T& t, const Args&... args)
 #define FPS 33.0f
 
 const int main_window_width = 500;
-const int main_window_height = 120;
+const int main_window_height = 100;
 
 std::string ExecutablePath = "";
 std::atomic_bool isMainWindowHidden = false;
@@ -297,9 +297,7 @@ namespace Monitor
 
 				DWORD minimum_brightness, maximum_brightness, current_brightness;
 				while (!GetMonitorBrightness(currentMonitor.Handle, &minimum_brightness, &current_brightness, &maximum_brightness))
-				{
 					std::this_thread::sleep_for(std::chrono::seconds(2));
-				}
 
 				currentMonitor.DccAvailable = monitor_capabilities & MC_CAPS_BRIGHTNESS;
 				currentMonitor.MaximumBrightness = maximum_brightness;
@@ -317,6 +315,7 @@ namespace Monitor
 		using namespace std::chrono_literals;
 		using clock = std::chrono::high_resolution_clock;
 		MonitorInfo& monitorInfo = PhysicalMonitorArray[cmd.monitorIndex];
+
 		if (cmd.brightnessValue < monitorInfo.MinimumBrightness || cmd.brightnessValue > monitorInfo.MaximumBrightness)
 		{
 			LOG("BAD VALUE"); return;
@@ -330,6 +329,7 @@ namespace Monitor
 
 			std::this_thread::sleep_for(30ms);
 		}
+
 		if (monitorInfo.CurrentBrightness != cmd.brightnessValue)
 		{
 			monitorInfo.CurrentBrightness = cmd.brightnessValue;
@@ -337,7 +337,6 @@ namespace Monitor
 			cmd.reset();
 		}
 		SetMonitorBrightness(monitorInfo.Handle, (DWORD)cmd.brightnessValue);
-
 	}
 
 	bool SetBrightness(PHYSICAL_MONITOR* physical_monitor, int brightness)
@@ -381,7 +380,6 @@ void MainWindowThread()
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 	io.IniFilename = imguiIniFilePath.c_str();
 
-
 	ImGui::StyleColorsDark();
 
 	ImGui_ImplGlfw_InitForOpenGL(window, true);
@@ -402,6 +400,10 @@ void MainWindowThread()
 		std::this_thread::sleep_for(std::chrono::milliseconds((int)(1000.0f / FPS) - 5));
 		if (isMainWindowHidden) continue;
 
+		Monitor::MonitorInfo& currentMonitor = Monitor::PhysicalMonitorArray[command.monitorIndex];
+		if (!command.isWorking()) command.brightnessValue = currentMonitor.CurrentBrightness;
+
+
 		glfwPollEvents();
 		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT);
@@ -409,44 +411,61 @@ void MainWindowThread()
 		ImGui_ImplOpenGL3_NewFrame();
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();
-
 		ImGui::PushFont(font);
-
 		ImGui::Begin("Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove);
 
-
-		if (ImGui::BeginCombo("##combo", Monitor::PhysicalMonitorArray[command.monitorIndex].Name.c_str()))
-		{
-			for (int i = 0; i < Monitor::PhysicalMonitorArray.size(); i++)
-			{
-				bool is_selected = (command.monitorIndex == i);
-
-				if (ImGui::Selectable(Monitor::PhysicalMonitorArray[i].Name.c_str(), is_selected))
-					command.monitorIndex = i;
-				if (is_selected)
-					ImGui::SetItemDefaultFocus();
-
-			}
-			ImGui::EndCombo();
-		}
-		Monitor::MonitorInfo& currentMonitor = Monitor::PhysicalMonitorArray[command.monitorIndex];
-		if (!command.isWorking()) command.brightnessValue = currentMonitor.CurrentBrightness;
-
-
 		ImGui::BeginTable("Table", 2, ImGuiTableFlags_Resizable);
-		ImGui::PushItemWidth(30);
-		ImGui::TableNextColumn();
-		ImGui::Text("Brightness: ");
-		ImGui::TableNextColumn();
-		ImGui::PopItemWidth();
-		ImGui::PushItemWidth(-1);
-		ImGui::SliderInt("", &command.brightnessValue, currentMonitor.MinimumBrightness, currentMonitor.MaximumBrightness, "%d", ImGuiSliderFlags_AlwaysClamp);
-		ImGui::PopItemWidth();
-		ImGui::EndTable();
-		ImGui::Checkbox("Change Immediately(Not Recommended)", &change_immediately);
-		ImGui::End();
+		{
+			ImGui::TableNextRow();
+			{
+				ImGui::TableNextColumn();
+				{
+					ImGui::PushItemWidth(30);
+					ImGui::Text("Monitor: ");
+					ImGui::PopItemWidth();
+				}
+				ImGui::TableNextColumn();
+				{
+					ImGui::PushItemWidth(-1);
+					if (ImGui::BeginCombo("##combo", Monitor::PhysicalMonitorArray[command.monitorIndex].Name.c_str()))
+					{
+						for (int i = 0; i < Monitor::PhysicalMonitorArray.size(); i++)
+						{
+							bool is_selected = (command.monitorIndex == i);
 
+							if (ImGui::Selectable(Monitor::PhysicalMonitorArray[i].Name.c_str(), is_selected))
+								command.monitorIndex = i;
+							if (is_selected)
+								ImGui::SetItemDefaultFocus();
+						}
+						ImGui::EndCombo();
+					}
+					ImGui::PopItemWidth();
+				}
+			}
+
+			ImGui::TableNextRow();
+			{
+				ImGui::TableNextColumn();
+				{
+					ImGui::PushItemWidth(30);
+					ImGui::Text("Brightness: ");
+					ImGui::PopItemWidth();
+				}
+				ImGui::TableNextColumn();
+				{
+					ImGui::PushItemWidth(-1);
+					ImGui::SliderInt("", &command.brightnessValue, currentMonitor.MinimumBrightness, currentMonitor.MaximumBrightness, "%d", ImGuiSliderFlags_AlwaysClamp);
+					ImGui::PopItemWidth();
+				}
+			}
+		} ImGui::EndTable();
+
+		ImGui::Checkbox("Change Immediately(Not Recommended)", &change_immediately);
+
+		ImGui::End();
 		ImGui::PopFont();
+
 		if (change_immediately != last_change_immediately)
 		{
 			if (change_immediately) command.setDelay(100);
