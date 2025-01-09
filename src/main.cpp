@@ -2,7 +2,9 @@
 
 #include <iostream>
 #include <thread>
-#include <mutex>
+#include <chrono>
+#include <future>
+#include <atomic>
 #include <vector>
 #include <string>
 #include <cassert>
@@ -237,6 +239,23 @@ namespace Monitor
 		int CurrentBrightness;
 	};
 
+	class ChangeBrightnessCommand
+	{
+		std::atomic<bool> m_working = false;
+		std::chrono::milliseconds m_delay = std::chrono::milliseconds(400);
+	public:
+		int monitorIndex;
+		int brightnessValue = 0;
+
+	public:
+		auto getDelay() {	return m_delay;	}
+		void setDelay(int dt) { m_delay = std::chrono::milliseconds(dt); }
+		bool isWorking() { return m_working; }
+
+		void setWorking() { m_working = true; }
+		void reset() { m_working = false; }
+	};
+
 	std::vector<MonitorInfo> PhysicalMonitorArray;
 	size_t physicalMonitorCount = 0;
 
@@ -285,7 +304,7 @@ namespace Monitor
 
 				currentMonitor.DccAvailable = monitor_capabilities & MC_CAPS_BRIGHTNESS;
 				currentMonitor.MaximumBrightness = maximum_brightness;
-				currentMonitor.MinimumBrightness = maximum_brightness;
+				currentMonitor.MinimumBrightness = minimum_brightness;
 				currentMonitor.CurrentBrightness = current_brightness;
 
 				PhysicalMonitorArray.push_back(currentMonitor);
@@ -294,16 +313,40 @@ namespace Monitor
 		return 1;
 	}
 
+	void SetBrightnessDispatch(ChangeBrightnessCommand& cmd)
+	{
+		using namespace std::chrono_literals;
+		using clock = std::chrono::high_resolution_clock;
+		MonitorInfo& monitorInfo = PhysicalMonitorArray[cmd.monitorIndex];
+		if (cmd.brightnessValue < monitorInfo.MinimumBrightness || cmd.brightnessValue > monitorInfo.MaximumBrightness)
+		{
+			LOG("BAD VALUE"); return;
+		}
+
+		clock::time_point tp = clock::now();
+		while (true)
+		{
+			clock::time_point final = clock::now();
+			if ((final - tp) > cmd.getDelay()) break;
+
+			std::this_thread::sleep_for(30ms);
+		}
+		if (monitorInfo.CurrentBrightness != cmd.brightnessValue)
+		{
+			monitorInfo.CurrentBrightness = cmd.brightnessValue;
+			LOG("set", monitorInfo.Name ," Brightness to ", cmd.brightnessValue);
+			cmd.reset();
+		}
+		SetMonitorBrightness(monitorInfo.Handle, (DWORD)cmd.brightnessValue);
+
+	}
+
 	bool SetBrightness(PHYSICAL_MONITOR* physical_monitor, int brightness)
 	{
 		HANDLE physical_monitor_handle = physical_monitor->hPhysicalMonitor;
 		return SetMonitorBrightness(physical_monitor_handle, (DWORD)brightness);
 	}
 
-	bool IsChangingBrightnessSupported()
-	{
-		return true;
-	}
 }
 
 GLFWwindow* StartGLFW()
@@ -362,29 +405,28 @@ void MainWindowThread()
 	//DWORD monitor_capabilities, colour_temperatures;
 	//
 	////HANDLE physical_monitor_handle = physical_monitor_array[0].hPhysicalMonitor;
-	HANDLE physical_monitor_handle = Monitor::PhysicalMonitorArray[0].Ptr->hPhysicalMonitor;
+	//HANDLE physical_monitor_handle = Monitor::PhysicalMonitorArray[0].Ptr->hPhysicalMonitor;
 	//GetMonitorCapabilities(physical_monitor_handle, &monitor_capabilities, &colour_temperatures);
 	//assert(monitor_capabilities & MC_CAPS_BRIGHTNESS && "your monitor doesnt support dcc/ci");
 
-	DWORD minimum_brightness, maximum_brightness, current_brightness;
-	while (!GetMonitorBrightness(physical_monitor_handle, &minimum_brightness, &current_brightness, &maximum_brightness))
-	{
-		std::this_thread::sleep_for(std::chrono::seconds(2));
-	}
+	//DWORD minimum_brightness, maximum_brightness, current_brightness;
+	//while (!GetMonitorBrightness(physical_monitor_handle, &minimum_brightness, &current_brightness, &maximum_brightness))
+	//{
+	//	std::this_thread::sleep_for(std::chrono::seconds(2));
+	//}
 
-	int selectedMonitorIndex = 0;
+	//int selectedMonitorIndex = 0;
 	//Monitor::MonitorInfo currentMonitor = ::Monitor::PhysicalMonitorArray[selectedMonitorIndex];
 
-	int brightness = current_brightness;
-	int brightness_in_last_frame = brightness;
-	int physical_monitor_brightness = brightness;
+	Monitor::ChangeBrightnessCommand command;
+	command.monitorIndex = 0;
 	bool change_immediately = false;
+	bool last_change_immediately = false;
 
-	std::vector<char> should_change_brightness;
 	while (!glfwWindowShouldClose(window))
 	{
 		std::this_thread::sleep_for(std::chrono::milliseconds((int)(1000.0f / FPS) - 5));
-		if (isMainWindowHidden && (current_brightness == physical_monitor_brightness)) continue;
+		if (isMainWindowHidden) continue;
 
 		glfwPollEvents();
 		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -399,18 +441,23 @@ void MainWindowThread()
 		ImGui::Begin("Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove);
 
 
-		if (ImGui::BeginCombo("##combo", Monitor::PhysicalMonitorArray[selectedMonitorIndex].Name.c_str())) // The second parameter is the label previewed before opening the combo.
+		if (ImGui::BeginCombo("##combo", Monitor::PhysicalMonitorArray[command.monitorIndex].Name.c_str()))
 		{
-			for (int n = 0; n < Monitor::PhysicalMonitorArray.size(); n++)
+			for (int i = 0; i < Monitor::PhysicalMonitorArray.size(); i++)
 			{
-				bool is_selected = (selectedMonitorIndex == n); // You can store your selection however you want, outside or inside your objects
-				if (ImGui::Selectable(Monitor::PhysicalMonitorArray[n].Name.c_str(), is_selected))
-					selectedMonitorIndex = n;
-					if (is_selected)
-						ImGui::SetItemDefaultFocus();   // You may set the initial focus when opening the combo (scrolling + for keyboard navigation support)
+				bool is_selected = (command.monitorIndex == i);
+
+				if (ImGui::Selectable(Monitor::PhysicalMonitorArray[i].Name.c_str(), is_selected))
+					command.monitorIndex = i;
+				if (is_selected)
+					ImGui::SetItemDefaultFocus();
+
 			}
 			ImGui::EndCombo();
 		}
+		Monitor::MonitorInfo& currentMonitor = Monitor::PhysicalMonitorArray[command.monitorIndex];
+		if (!command.isWorking()) command.brightnessValue = currentMonitor.CurrentBrightness;
+
 
 		ImGui::BeginTable("Table", 2, ImGuiTableFlags_Resizable);
 		ImGui::PushItemWidth(30);
@@ -419,27 +466,31 @@ void MainWindowThread()
 		ImGui::TableNextColumn();
 		ImGui::PopItemWidth();
 		ImGui::PushItemWidth(-1);
-		brightness_in_last_frame = brightness;
-		ImGui::SliderInt("", &brightness, minimum_brightness, maximum_brightness, "%d", ImGuiSliderFlags_AlwaysClamp);
-		current_brightness = brightness;
+		ImGui::SliderInt("", &command.brightnessValue, currentMonitor.MinimumBrightness, currentMonitor.MaximumBrightness, "%d", ImGuiSliderFlags_AlwaysClamp);
+		//current_brightness = brightness;
 		ImGui::PopItemWidth();
 		ImGui::EndTable();
 		ImGui::Checkbox("Change Immediately(Not Recommended)", &change_immediately);
 		ImGui::End();
 
 		ImGui::PopFont();
-
-		if (brightness_in_last_frame == brightness)
-			should_change_brightness.push_back(1);				// fill vector if brightness value stays same
-		else
-			std::vector<char>().swap(should_change_brightness); // empty the vector
-
-		if (should_change_brightness.size() > (2 + 18 * !change_immediately) && current_brightness != physical_monitor_brightness)
+		if (change_immediately != last_change_immediately)
 		{
-			std::vector<char>().swap(should_change_brightness);
-			physical_monitor_brightness = current_brightness;
-			SetMonitorBrightness(physical_monitor_handle, (DWORD)physical_monitor_brightness);
-			LOG("change");
+			if (change_immediately) command.setDelay(100);
+			else command.setDelay(500);
+			last_change_immediately = change_immediately;
+		}
+
+		if (command.brightnessValue != currentMonitor.CurrentBrightness && !command.isWorking())
+		{
+			command.setWorking();
+			//auto future = std::async(std::launch::async, Monitor::SetBrightnessDispatch, std::ref(command));
+			std::thread{
+				[&command]()
+				{
+					Monitor::SetBrightnessDispatch(command);
+				}
+			}.detach();
 		}
 
 		ImGui::Render();
