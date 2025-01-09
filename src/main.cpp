@@ -4,6 +4,7 @@
 #include <thread>
 #include <mutex>
 #include <vector>
+#include <string>
 #include <cassert>
 
 #include <Windows.h>
@@ -24,12 +25,12 @@
 #ifdef _DEBUG
 void LOG()
 {
-	std::wcout << '\n';
+	std::cout << '\n';
 }
 template<typename T, typename... Args>
 void LOG(const T& t, const Args&... args)
 {
-	std::wcout << t << " ";
+	std::cout << t << " ";
 	LOG(args...);
 }
 #else
@@ -228,7 +229,7 @@ namespace Monitor
 	struct MonitorInfo			// wrapper for PHYSICAL_MONITOR
 	{
 		PHYSICAL_MONITOR* Ptr;
-		std::wstring Name;
+		std::string Name;
 		HANDLE Handle;
 		bool DccAvailable;
 		int MinimumBrightness;
@@ -237,12 +238,25 @@ namespace Monitor
 	};
 
 	std::vector<MonitorInfo> PhysicalMonitorArray;
-	int physicalMonitorCount = 0;
+	size_t physicalMonitorCount = 0;
+
+	bool MonitorWithNameExists(const std::string& name)
+	{
+		for (auto& monitor : PhysicalMonitorArray)
+		{
+			if (monitor.Name == name) return true;
+		}
+		return false;
+	}
+
+	void UpdateMonitorName(std::string& name)
+	{
+		name = name + std::to_string(physicalMonitorCount);
+	}
 
 	int CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM dwData)
 	{
 		DWORD physicalMonitorsinCurrentHmonitor = 0;
-
 		GetNumberOfPhysicalMonitorsFromHMONITOR(hMonitor, &physicalMonitorsinCurrentHmonitor);
 		PHYSICAL_MONITOR* physicalMonitor = new PHYSICAL_MONITOR[physicalMonitorsinCurrentHmonitor];
 
@@ -253,7 +267,10 @@ namespace Monitor
 				MonitorInfo currentMonitor;
 				currentMonitor.Ptr = &physicalMonitor[i];
 				currentMonitor.Handle = currentMonitor.Ptr->hPhysicalMonitor;
-				currentMonitor.Name = currentMonitor.Ptr->szPhysicalMonitorDescription;
+
+				std::wstring _name = currentMonitor.Ptr->szPhysicalMonitorDescription;
+				currentMonitor.Name = std::string(_name.begin(), _name.end());
+				if (MonitorWithNameExists(currentMonitor.Name)) UpdateMonitorName(currentMonitor.Name);
 
 				LOG("\tFound Monitor ", ++physicalMonitorCount, " : ", currentMonitor.Name,'\n');
 
@@ -355,6 +372,9 @@ void MainWindowThread()
 		std::this_thread::sleep_for(std::chrono::seconds(2));
 	}
 
+	int selectedMonitorIndex = 0;
+	//Monitor::MonitorInfo currentMonitor = ::Monitor::PhysicalMonitorArray[selectedMonitorIndex];
+
 	int brightness = current_brightness;
 	int brightness_in_last_frame = brightness;
 	int physical_monitor_brightness = brightness;
@@ -377,6 +397,21 @@ void MainWindowThread()
 		ImGui::PushFont(font);
 
 		ImGui::Begin("Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove);
+
+
+		if (ImGui::BeginCombo("##combo", Monitor::PhysicalMonitorArray[selectedMonitorIndex].Name.c_str())) // The second parameter is the label previewed before opening the combo.
+		{
+			for (int n = 0; n < Monitor::PhysicalMonitorArray.size(); n++)
+			{
+				bool is_selected = (selectedMonitorIndex == n); // You can store your selection however you want, outside or inside your objects
+				if (ImGui::Selectable(Monitor::PhysicalMonitorArray[n].Name.c_str(), is_selected))
+					selectedMonitorIndex = n;
+					if (is_selected)
+						ImGui::SetItemDefaultFocus();   // You may set the initial focus when opening the combo (scrolling + for keyboard navigation support)
+			}
+			ImGui::EndCombo();
+		}
+
 		ImGui::BeginTable("Table", 2, ImGuiTableFlags_Resizable);
 		ImGui::PushItemWidth(30);
 		ImGui::TableNextColumn();
