@@ -45,7 +45,7 @@ void LOG(const T& t, const Args&... args)
 #define FPS 33.0f
 
 const int main_window_width = 500;
-const int main_window_height = 80;
+const int main_window_height = 120;
 
 std::string ExecutablePath = "";
 std::atomic_bool isMainWindowHidden = false;
@@ -230,6 +230,10 @@ namespace Monitor
 		PHYSICAL_MONITOR* Ptr;
 		std::wstring Name;
 		HANDLE Handle;
+		bool DccAvailable;
+		int MinimumBrightness;
+		int MaximumBrightness;
+		int CurrentBrightness;
 	};
 
 	std::vector<MonitorInfo> PhysicalMonitorArray;
@@ -252,6 +256,20 @@ namespace Monitor
 				currentMonitor.Name = currentMonitor.Ptr->szPhysicalMonitorDescription;
 
 				LOG("\tFound Monitor ", ++physicalMonitorCount, " : ", currentMonitor.Name,'\n');
+
+				DWORD monitor_capabilities, colour_temperatures;
+				GetMonitorCapabilities(currentMonitor.Handle, &monitor_capabilities, &colour_temperatures);
+
+				DWORD minimum_brightness, maximum_brightness, current_brightness;
+				while (!GetMonitorBrightness(currentMonitor.Handle, &minimum_brightness, &current_brightness, &maximum_brightness))
+				{
+					std::this_thread::sleep_for(std::chrono::seconds(2));
+				}
+
+				currentMonitor.DccAvailable = monitor_capabilities & MC_CAPS_BRIGHTNESS;
+				currentMonitor.MaximumBrightness = maximum_brightness;
+				currentMonitor.MinimumBrightness = maximum_brightness;
+				currentMonitor.CurrentBrightness = current_brightness;
 
 				PhysicalMonitorArray.push_back(currentMonitor);
 			}
@@ -324,12 +342,12 @@ void MainWindowThread()
 
 
 
-	DWORD monitor_capabilities, colour_temperatures;
-
-	//HANDLE physical_monitor_handle = physical_monitor_array[0].hPhysicalMonitor;
+	//DWORD monitor_capabilities, colour_temperatures;
+	//
+	////HANDLE physical_monitor_handle = physical_monitor_array[0].hPhysicalMonitor;
 	HANDLE physical_monitor_handle = Monitor::PhysicalMonitorArray[0].Ptr->hPhysicalMonitor;
-	GetMonitorCapabilities(physical_monitor_handle, &monitor_capabilities, &colour_temperatures);
-	assert(monitor_capabilities & MC_CAPS_BRIGHTNESS && "your monitor doesnt support dcc/ci");
+	//GetMonitorCapabilities(physical_monitor_handle, &monitor_capabilities, &colour_temperatures);
+	//assert(monitor_capabilities & MC_CAPS_BRIGHTNESS && "your monitor doesnt support dcc/ci");
 
 	DWORD minimum_brightness, maximum_brightness, current_brightness;
 	while (!GetMonitorBrightness(physical_monitor_handle, &minimum_brightness, &current_brightness, &maximum_brightness))
@@ -359,7 +377,6 @@ void MainWindowThread()
 		ImGui::PushFont(font);
 
 		ImGui::Begin("Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove);
-		ImGui::Checkbox("Change Immediately(Not Recommended)", &change_immediately);
 		ImGui::BeginTable("Table", 2, ImGuiTableFlags_Resizable);
 		ImGui::PushItemWidth(30);
 		ImGui::TableNextColumn();
@@ -372,6 +389,7 @@ void MainWindowThread()
 		current_brightness = brightness;
 		ImGui::PopItemWidth();
 		ImGui::EndTable();
+		ImGui::Checkbox("Change Immediately(Not Recommended)", &change_immediately);
 		ImGui::End();
 
 		ImGui::PopFont();
