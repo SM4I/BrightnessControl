@@ -175,7 +175,6 @@ namespace TrayIcon
 
 		case WM_COMMAND:
 			switch (LOWORD(wParam)) {
-				// Handle menu item events here
 			case IDM_EXIT_COMMAND: {
 				glfwSetWindowShouldClose(mainWindow, true);
 				break;
@@ -393,31 +392,6 @@ void MainWindowThread()
 
 	EnumDisplayMonitors(NULL, NULL, Monitor::MonitorEnumProc, 0);
 
-	//HMONITOR monitor = MonitorFromWindow(GetDesktopWindow(), MONITOR_DEFAULTTOPRIMARY);
-	//DWORD number_of_physical_monitors;
-	//GetNumberOfPhysicalMonitorsFromHMONITOR(monitor, &number_of_physical_monitors);
-	//
-	//PHYSICAL_MONITOR* physical_monitor_array = (PHYSICAL_MONITOR*)malloc(sizeof(PHYSICAL_MONITOR) * number_of_physical_monitors);
-	//GetPhysicalMonitorsFromHMONITOR(monitor, number_of_physical_monitors, physical_monitor_array);
-
-
-
-	//DWORD monitor_capabilities, colour_temperatures;
-	//
-	////HANDLE physical_monitor_handle = physical_monitor_array[0].hPhysicalMonitor;
-	//HANDLE physical_monitor_handle = Monitor::PhysicalMonitorArray[0].Ptr->hPhysicalMonitor;
-	//GetMonitorCapabilities(physical_monitor_handle, &monitor_capabilities, &colour_temperatures);
-	//assert(monitor_capabilities & MC_CAPS_BRIGHTNESS && "your monitor doesnt support dcc/ci");
-
-	//DWORD minimum_brightness, maximum_brightness, current_brightness;
-	//while (!GetMonitorBrightness(physical_monitor_handle, &minimum_brightness, &current_brightness, &maximum_brightness))
-	//{
-	//	std::this_thread::sleep_for(std::chrono::seconds(2));
-	//}
-
-	//int selectedMonitorIndex = 0;
-	//Monitor::MonitorInfo currentMonitor = ::Monitor::PhysicalMonitorArray[selectedMonitorIndex];
-
 	Monitor::ChangeBrightnessCommand command;
 	command.monitorIndex = 0;
 	bool change_immediately = false;
@@ -467,7 +441,6 @@ void MainWindowThread()
 		ImGui::PopItemWidth();
 		ImGui::PushItemWidth(-1);
 		ImGui::SliderInt("", &command.brightnessValue, currentMonitor.MinimumBrightness, currentMonitor.MaximumBrightness, "%d", ImGuiSliderFlags_AlwaysClamp);
-		//current_brightness = brightness;
 		ImGui::PopItemWidth();
 		ImGui::EndTable();
 		ImGui::Checkbox("Change Immediately(Not Recommended)", &change_immediately);
@@ -484,7 +457,7 @@ void MainWindowThread()
 		if (command.brightnessValue != currentMonitor.CurrentBrightness && !command.isWorking())
 		{
 			command.setWorking();
-			//auto future = std::async(std::launch::async, Monitor::SetBrightnessDispatch, std::ref(command));
+
 			std::thread{
 				[&command]()
 				{
