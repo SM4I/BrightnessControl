@@ -230,12 +230,21 @@ namespace Monitor
 	struct MonitorInfo			// wrapper for PHYSICAL_MONITOR
 	{
 		PHYSICAL_MONITOR* Ptr;
-		std::string Name;
-		HANDLE Handle;
-		bool DccAvailable;
-		int MinimumBrightness;
-		int MaximumBrightness;
-		int CurrentBrightness;
+		std::string Name		= "";
+		HANDLE Handle			= 0;
+		bool DccAvailable		= false;
+		int MinimumBrightness	= 0;
+		int MaximumBrightness	= 0;
+		int CurrentBrightness	= 0;
+
+		MonitorInfo()
+		{
+			Ptr = new PHYSICAL_MONITOR;
+		}
+		~MonitorInfo()
+		{
+			delete Ptr;
+		}
 	};
 
 	class ChangeBrightnessCommand
@@ -278,12 +287,15 @@ namespace Monitor
 		GetNumberOfPhysicalMonitorsFromHMONITOR(hMonitor, &physicalMonitorsinCurrentHmonitor);
 		PHYSICAL_MONITOR* physicalMonitor = new PHYSICAL_MONITOR[physicalMonitorsinCurrentHmonitor];
 
+		PhysicalMonitorArray.swap(std::vector<MonitorInfo>());
 		if (GetPhysicalMonitorsFromHMONITOR(hMonitor, physicalMonitorsinCurrentHmonitor, physicalMonitor))
 		{
 			for (int i = 0; i < physicalMonitorsinCurrentHmonitor; i++)
 			{
 				MonitorInfo currentMonitor;
-				currentMonitor.Ptr = &physicalMonitor[i];
+				// currentMonitor.Ptr = &physicalMonitor[i];
+
+				memcpy(currentMonitor.Ptr, &physicalMonitor[i], sizeof(PHYSICAL_MONITOR));
 				currentMonitor.Handle = currentMonitor.Ptr->hPhysicalMonitor;
 
 				std::wstring _name = currentMonitor.Ptr->szPhysicalMonitorDescription;
@@ -307,6 +319,7 @@ namespace Monitor
 				PhysicalMonitorArray.push_back(currentMonitor);
 			}
 		}
+		delete[] physicalMonitor;
 		return 1;
 	}
 
