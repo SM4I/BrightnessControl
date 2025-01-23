@@ -5,6 +5,7 @@
 #include <chrono>
 #include <future>
 #include <atomic>
+#include <array>
 #include <vector>
 #include <string>
 #include <cassert>
@@ -241,6 +242,18 @@ namespace Monitor
 		{
 			Ptr = new PHYSICAL_MONITOR;
 		}
+		MonitorInfo(MonitorInfo&& other)
+		{
+			Ptr = other.Ptr;
+			other.Ptr = new PHYSICAL_MONITOR;
+			Name = std::move(other.Name);
+
+			DccAvailable = other.DccAvailable;
+			MinimumBrightness = other.MinimumBrightness;
+			MaximumBrightness = other.MaximumBrightness;
+			CurrentBrightness = other.CurrentBrightness;
+			Handle = other.Handle;
+		}
 		~MonitorInfo()
 		{
 			delete Ptr;
@@ -316,7 +329,7 @@ namespace Monitor
 				currentMonitor.MinimumBrightness = minimum_brightness;
 				currentMonitor.CurrentBrightness = current_brightness;
 
-				PhysicalMonitorArray.push_back(currentMonitor);
+				PhysicalMonitorArray.emplace_back(std::move(currentMonitor));
 			}
 		}
 		delete[] physicalMonitor;
@@ -407,14 +420,12 @@ void MainWindowThread()
 	command.monitorIndex = 0;
 	bool change_immediately = false;
 	bool last_change_immediately = false;
+	std::atomic_bool refreshing_monitor_list = false;
 
 	while (!glfwWindowShouldClose(window))
 	{
 		std::this_thread::sleep_for(std::chrono::milliseconds((int)(1000.0f / FPS) - 5));
 		if (isMainWindowHidden) continue;
-
-		Monitor::MonitorInfo& currentMonitor = Monitor::PhysicalMonitorArray[command.monitorIndex];
-		if (!command.isWorking()) command.brightnessValue = currentMonitor.CurrentBrightness;
 
 
 		glfwPollEvents();
@@ -427,75 +438,102 @@ void MainWindowThread()
 		ImGui::PushFont(font);
 		ImGui::Begin("Window", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove);
 
-		ImGui::BeginTable("Table", 2, ImGuiTableFlags_Resizable);
+		if (refreshing_monitor_list)
 		{
-			ImGui::TableNextRow();
+			ImGui::Text("Refreshing");
+		}
+		else
+		{
+			Monitor::MonitorInfo& currentMonitor = Monitor::PhysicalMonitorArray[command.monitorIndex];
+			if (!command.isWorking()) command.brightnessValue = currentMonitor.CurrentBrightness;
+
+			ImGui::BeginTable("Table", 2, ImGuiTableFlags_Resizable);
 			{
-				ImGui::TableNextColumn();
+				ImGui::TableNextRow();
 				{
-					ImGui::PushItemWidth(30);
-					ImGui::Text("Monitor: ");
-					ImGui::PopItemWidth();
-				}
-				ImGui::TableNextColumn();
-				{
-					ImGui::PushItemWidth(-1);
-					if (ImGui::BeginCombo("##combo", Monitor::PhysicalMonitorArray[command.monitorIndex].Name.c_str()))
+					ImGui::TableNextColumn();
 					{
-						for (int i = 0; i < Monitor::PhysicalMonitorArray.size(); i++)
-						{
-							bool is_selected = (command.monitorIndex == i);
-
-							if (ImGui::Selectable(Monitor::PhysicalMonitorArray[i].Name.c_str(), is_selected))
-								command.monitorIndex = i;
-							if (is_selected)
-								ImGui::SetItemDefaultFocus();
-						}
-						ImGui::EndCombo();
+						ImGui::PushItemWidth(30);
+						ImGui::Text("Monitor: ");
+						ImGui::PopItemWidth();
 					}
-					ImGui::PopItemWidth();
-				}
-			}
+					ImGui::TableNextColumn();
+					{
+						ImGui::PushItemWidth(-1);
+						if (ImGui::BeginCombo("##combo", Monitor::PhysicalMonitorArray[command.monitorIndex].Name.c_str()))
+						{
+							for (int i = 0; i < Monitor::PhysicalMonitorArray.size(); i++)
+							{
+								bool is_selected = (command.monitorIndex == i);
 
-			ImGui::TableNextRow();
+								if (ImGui::Selectable(Monitor::PhysicalMonitorArray[i].Name.c_str(), is_selected))
+									command.monitorIndex = i;
+								if (is_selected)
+									ImGui::SetItemDefaultFocus();
+							}
+							ImGui::EndCombo();
+						}
+						ImGui::PopItemWidth();
+					}
+				}
+
+				ImGui::TableNextRow();
+				{
+					ImGui::TableNextColumn();
+					{
+						ImGui::PushItemWidth(30);
+						ImGui::Text("Brightness: ");
+						ImGui::PopItemWidth();
+					}
+					ImGui::TableNextColumn();
+					{
+						ImGui::PushItemWidth(-1);
+						ImGui::SliderInt("", &command.brightnessValue, currentMonitor.MinimumBrightness, currentMonitor.MaximumBrightness, "%d", ImGuiSliderFlags_AlwaysClamp);
+						ImGui::PopItemWidth();
+					}
+				}
+			} ImGui::EndTable();
+
+			ImGui::Checkbox("Change Immediately(Not Recommended)", &change_immediately);
+
+			ImGui::SameLine();
+			if (ImGui::Button("Refresh"))
 			{
-				ImGui::TableNextColumn();
-				{
-					ImGui::PushItemWidth(30);
-					ImGui::Text("Brightness: ");
-					ImGui::PopItemWidth();
-				}
-				ImGui::TableNextColumn();
-				{
-					ImGui::PushItemWidth(-1);
-					ImGui::SliderInt("", &command.brightnessValue, currentMonitor.MinimumBrightness, currentMonitor.MaximumBrightness, "%d", ImGuiSliderFlags_AlwaysClamp);
-					ImGui::PopItemWidth();
-				}
+				std::thread{
+					[&refreshing_monitor_list]()
+					{
+						refreshing_monitor_list = true;
+						EnumDisplayMonitors(NULL, NULL, Monitor::MonitorEnumProc, 0);
+						refreshing_monitor_list = false;
+					}
+				}.detach();
 			}
-		} ImGui::EndTable();
 
-		ImGui::Checkbox("Change Immediately(Not Recommended)", &change_immediately);
-
+		}
 		ImGui::End();
 		ImGui::PopFont();
 
-		if (change_immediately != last_change_immediately)
+		if (!refreshing_monitor_list)
 		{
-			if (change_immediately) command.setDelay(100);
-			else command.setDelay(500);
-			last_change_immediately = change_immediately;
-		}
+			Monitor::MonitorInfo& currentMonitor = Monitor::PhysicalMonitorArray[command.monitorIndex];
+			if (change_immediately != last_change_immediately)
+			{
+				if (change_immediately) command.setDelay(100);
+				else command.setDelay(500);
+				last_change_immediately = change_immediately;
+			}
 
-		if (command.brightnessValue != currentMonitor.CurrentBrightness && !command.isWorking())
-		{
-			command.setWorking();
+			if (command.brightnessValue != currentMonitor.CurrentBrightness && !command.isWorking())
+			{
+				command.setWorking();
 
-			std::thread{
-				[&command]()
-				{
-					Monitor::SetBrightnessDispatch(command);
-				}
-			}.detach();
+				std::thread{
+					[&command]()
+					{
+						Monitor::SetBrightnessDispatch(command);
+					}
+				}.detach();
+			}
 		}
 
 		ImGui::Render();
