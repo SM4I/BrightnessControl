@@ -280,6 +280,7 @@ namespace Monitor
 	std::vector<MonitorInfo> PhysicalMonitorArray;
 	size_t physicalMonitorCount = 0;
 
+
 	bool MonitorWithNameExists(const std::string& name)
 	{
 		for (auto& monitor : PhysicalMonitorArray)
@@ -296,6 +297,7 @@ namespace Monitor
 
 	int CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM dwData)
 	{
+		using namespace std::chrono_literals;
 		DWORD physicalMonitorsinCurrentHmonitor = 0;
 		GetNumberOfPhysicalMonitorsFromHMONITOR(hMonitor, &physicalMonitorsinCurrentHmonitor);
 		PHYSICAL_MONITOR* physicalMonitor = new PHYSICAL_MONITOR[physicalMonitorsinCurrentHmonitor];
@@ -322,7 +324,7 @@ namespace Monitor
 
 				DWORD minimum_brightness, maximum_brightness, current_brightness;
 				while (!GetMonitorBrightness(currentMonitor.Handle, &minimum_brightness, &current_brightness, &maximum_brightness))
-					std::this_thread::sleep_for(std::chrono::seconds(2));
+					std::this_thread::sleep_for(2s);
 
 				currentMonitor.DccAvailable = monitor_capabilities & MC_CAPS_BRIGHTNESS;
 				currentMonitor.MaximumBrightness = maximum_brightness;
@@ -371,6 +373,34 @@ namespace Monitor
 		return SetMonitorBrightness(physical_monitor_handle, (DWORD)brightness);
 	}
 
+	// Pulls monitor brightness values every 5 hours
+	// Using this in case user changes brightness value using another app or osd settings
+	void PullBrightnessValues()
+	{
+		using clock = std::chrono::high_resolution_clock;
+		using namespace std::chrono_literals;
+
+		static clock::time_point last_pulling_time = clock::now();
+		clock::time_point current_time = clock::now();
+
+		if ((current_time - last_pulling_time) > 5h)
+		{
+			LOG("Auto updating current brightness values");
+			last_pulling_time = clock::now();
+
+			for (auto& element : PhysicalMonitorArray)
+			{
+				if (!element.DccAvailable) continue;
+
+				DWORD min, max, current;
+				while (!GetMonitorBrightness(element.Handle, &min, &current, &max))
+					std::this_thread::sleep_for(2s);
+
+				element.CurrentBrightness = current;
+			}
+		}
+	}
+
 }
 
 GLFWwindow* StartGLFW()
@@ -378,7 +408,7 @@ GLFWwindow* StartGLFW()
 	glfwInit();
 	glfwWindowHint(GLFW_DECORATED, GL_FALSE);
 
-	GLFWwindow* window = glfwCreateWindow(700, 700, "Slider", NULL, NULL);
+	GLFWwindow* window = glfwCreateWindow(main_window_width, main_window_height, "Slider", NULL, NULL);
 	mainWindow = window;
 	mainWindowHandle = glfwGetWin32Window(window);
 
@@ -425,8 +455,8 @@ void MainWindowThread()
 	while (!glfwWindowShouldClose(window))
 	{
 		std::this_thread::sleep_for(std::chrono::milliseconds((int)(1000.0f / FPS) - 5));
+		Monitor::PullBrightnessValues();
 		if (isMainWindowHidden) continue;
-
 
 		glfwPollEvents();
 		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
