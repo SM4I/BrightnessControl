@@ -14,16 +14,21 @@ add_subdirectory("imgui")
 add_executable(BSA WIN32 src/main.cpp)
 include_directories(BSA ${CMAKE_SOURCE_DIR}/glfw/include)
 include_directories(BSA ${CMAKE_SOURCE_DIR}/imgui)
-target_link_libraries(BSA opengl32 dxva2 imgui glfw)
+target_link_libraries(BSA opengl32 dxva2 imgui glfw gdiplus)
 
 set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT "BSA")
 if(WIN32)
 	add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
 		COMMAND ${CMAKE_COMMAND} -E copy
-			"${CMAKE_SOURCE_DIR}/src/logo.ico"
+			"${CMAKE_SOURCE_DIR}/src/logo.png"
 			"${CMAKE_SOURCE_DIR}/src/Roboto_medium.ttf"
-			$<TARGET_FILE_DIR:BSA>)
+			$<TARGET_FILE_DIR:BSA>
+		COMMAND ${CMAKE_COMMAND} -E copy
+			"${CMAKE_SOURCE_DIR}/src/logo.png"
+			"${CMAKE_BINARY_DIR}/"
+		)
+
+
 	target_link_options(${PROJECT_NAME} PRIVATE $<$<CONFIG:Debug>:/INCREMENTAL>)
 	target_link_options(${PROJECT_NAME} PRIVATE $<$<CONFIG:Debug>:/ZI>)
-	target_sources(BSA PRIVATE src/app_icon.rc)
 endif()

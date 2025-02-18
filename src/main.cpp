@@ -14,7 +14,7 @@
 #include <Windows.h>
 #include <Shellapi.h>
 #include <highlevelmonitorconfigurationapi.h>
-
+#include <gdiplus.h>
 
 #include "GLFW/glfw3.h"
 #define GLFW_EXPOSE_NATIVE_WIN32
@@ -98,6 +98,26 @@ void MoveMainWindowToBottomRight(GLFWwindow* window)
 	glfwSetWindowPos(window, monitorWorkspace.width - main_window_width, monitorWorkspace.height - main_window_height);
 }
 
+namespace Icon
+{
+	HICON GetTrayHICON()
+	{
+		Gdiplus::GdiplusStartupInput gdiStratup;
+		ULONG_PTR gdiToken;
+
+		Gdiplus::GdiplusStartup(&gdiToken, &gdiStratup, NULL);
+		Gdiplus::Bitmap* bitmap = new Gdiplus::Bitmap(L"logo.png");
+		assert(bitmap && bitmap->GetLastStatus() == Gdiplus::Ok && "failed to load icon");
+
+		HICON hIcon;
+		bitmap->GetHICON(&hIcon);
+		delete bitmap;
+		Gdiplus::GdiplusShutdown(gdiToken);
+
+		return hIcon;
+	}
+}
+
 HWND mainWindowHandle;
 GLFWwindow* mainWindow;
 namespace TrayIcon
@@ -171,7 +191,7 @@ namespace TrayIcon
 	LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 		switch (uMsg) {
 		case WM_CREATE:
-			hIcon = (HICON)LoadImage(NULL, L"logo.ico", IMAGE_ICON, 32, 32, LR_LOADFROMFILE);
+			hIcon = Icon::GetTrayHICON();//(HICON)LoadImage(NULL, L"logo.ico", IMAGE_ICON, 32, 32, LR_LOADFROMFILE);
 			if (hIcon == NULL) {
 				MessageBox(NULL, L"Failed to load icon!", L"Error", MB_OK | MB_ICONERROR);
 				PostQuitMessage(0);
