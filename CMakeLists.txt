@@ -18,12 +18,12 @@ target_link_libraries(BSA opengl32 dxva2 imgui glfw)
 
 set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT "BSA")
 if(WIN32)
-	add_custom_command(TARGET BSA POST_BUILD
+	add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
 		COMMAND ${CMAKE_COMMAND} -E copy
 			"${CMAKE_SOURCE_DIR}/src/logo.ico"
-			"${CMAKE_SOURCE_DIR}/src/NotoSansDisplay_Regular.ttf"
-			"${CMAKE_SOURCE_DIR}/src/imgui.ini"
+			"${CMAKE_SOURCE_DIR}/src/Roboto_medium.ttf"
 			$<TARGET_FILE_DIR:BSA>)
-
+	target_link_options(${PROJECT_NAME} PRIVATE $<$<CONFIG:Debug>:/INCREMENTAL>)
+	target_link_options(${PROJECT_NAME} PRIVATE $<$<CONFIG:Debug>:/ZI>)
 	target_sources(BSA PRIVATE src/app_icon.rc)
 endif()

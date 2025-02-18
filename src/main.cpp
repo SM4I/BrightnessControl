@@ -1,6 +1,7 @@
 #define UNICODE
 
 #include <iostream>
+#include <fstream>
 #include <thread>
 #include <chrono>
 #include <future>
@@ -24,6 +25,10 @@
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
+
+#include "base64.hpp"
+
+#include "bin.h"
 
 #ifdef _DEBUG
 void LOG()
@@ -77,7 +82,7 @@ std::string GetImGuiIniPath()
 
 std::string GetTTFFontFile()
 {
-	std::string fontPath(GetExecutablePath() + "NotoSansDisplay_Regular.ttf");
+	std::string fontPath(GetExecutablePath() + "Roboto_medium.ttf");
 	LOG("USING FONT: ", fontPath.c_str());
 	return fontPath;
 }
@@ -434,8 +439,8 @@ void MainWindowThread()
 
 	ImGuiIO& io = ImGui::GetIO(); (void)io;
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-	io.IniFilename = imguiIniFilePath.c_str();
-
+	io.IniFilename = nullptr;
+	ImGui::LoadIniSettingsFromMemory(base64::from_base64(imgui_ini).c_str());
 	ImGui::StyleColorsDark();
 
 	ImGui_ImplGlfw_InitForOpenGL(window, true);
@@ -477,19 +482,22 @@ void MainWindowThread()
 			Monitor::MonitorInfo& currentMonitor = Monitor::PhysicalMonitorArray[command.monitorIndex];
 			if (!command.isWorking()) command.brightnessValue = currentMonitor.CurrentBrightness;
 
+			float labelWidth = 30.0f;
+			float buttonWidth = 40.0f;
+
 			ImGui::BeginTable("Table", 2, ImGuiTableFlags_Resizable);
 			{
 				ImGui::TableNextRow();
 				{
 					ImGui::TableNextColumn();
 					{
-						ImGui::PushItemWidth(30);
-						ImGui::Text("Monitor: ");
+						ImGui::PushItemWidth(labelWidth);
+						ImGui::Text("Monitor List: ");
 						ImGui::PopItemWidth();
 					}
 					ImGui::TableNextColumn();
 					{
-						ImGui::PushItemWidth(-1);
+						ImGui::PushItemWidth(ImGui::GetWindowWidth() - ImGui::GetCursorPosX() - labelWidth - buttonWidth);
 						if (ImGui::BeginCombo("##combo", Monitor::PhysicalMonitorArray[command.monitorIndex].Name.c_str()))
 						{
 							for (int i = 0; i < Monitor::PhysicalMonitorArray.size(); i++)
@@ -502,6 +510,22 @@ void MainWindowThread()
 									ImGui::SetItemDefaultFocus();
 							}
 							ImGui::EndCombo();
+						}
+						ImGui::PopItemWidth();
+
+						ImGui::SameLine();
+
+						ImGui::PushItemWidth(buttonWidth);
+						if (ImGui::Button("Refresh"))
+						{
+							std::thread{
+								[&refreshing_monitor_list]()
+								{
+									refreshing_monitor_list = true;
+									EnumDisplayMonitors(NULL, NULL, Monitor::MonitorEnumProc, 0);
+									refreshing_monitor_list = false;
+								}
+							}.detach();
 						}
 						ImGui::PopItemWidth();
 					}
@@ -527,17 +551,6 @@ void MainWindowThread()
 			ImGui::Checkbox("Change Immediately(Not Recommended)", &change_immediately);
 
 			ImGui::SameLine();
-			if (ImGui::Button("Refresh"))
-			{
-				std::thread{
-					[&refreshing_monitor_list]()
-					{
-						refreshing_monitor_list = true;
-						EnumDisplayMonitors(NULL, NULL, Monitor::MonitorEnumProc, 0);
-						refreshing_monitor_list = false;
-					}
-				}.detach();
-			}
 
 		}
 		ImGui::End();
@@ -571,6 +584,12 @@ void MainWindowThread()
 		glfwGetFramebufferSize(window, &display_w, &display_h);
 		glViewport(0, 0, display_w, display_h);
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+		//const char* data = ImGui::SaveIniSettingsToMemory();
+		//std::ofstream check_file("out.txt");
+		//check_file << data;
+		//check_file.close();
+
 
 		glfwSwapBuffers(window);
 	}
