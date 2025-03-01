@@ -302,7 +302,9 @@ namespace Monitor
 		GetNumberOfPhysicalMonitorsFromHMONITOR(hMonitor, &physicalMonitorsinCurrentHmonitor);
 		PHYSICAL_MONITOR* physicalMonitor = new PHYSICAL_MONITOR[physicalMonitorsinCurrentHmonitor];
 
-		PhysicalMonitorArray.swap(std::vector<MonitorInfo>());
+		if(PhysicalMonitorArray.size() == 0)
+			PhysicalMonitorArray.swap(std::vector<MonitorInfo>());
+
 		if (GetPhysicalMonitorsFromHMONITOR(hMonitor, physicalMonitorsinCurrentHmonitor, physicalMonitor))
 		{
 			for (int i = 0; i < physicalMonitorsinCurrentHmonitor; i++)
@@ -326,7 +328,9 @@ namespace Monitor
 				while (!GetMonitorBrightness(currentMonitor.Handle, &minimum_brightness, &current_brightness, &maximum_brightness))
 					std::this_thread::sleep_for(2s);
 
-				currentMonitor.DccAvailable = monitor_capabilities & MC_CAPS_BRIGHTNESS;
+				// this doesn't work on my current monitor
+				//currentMonitor.DccAvailable = monitor_capabilities & MC_CAPS_BRIGHTNESS;
+				currentMonitor.DccAvailable = true;
 				currentMonitor.MaximumBrightness = maximum_brightness;
 				currentMonitor.MinimumBrightness = minimum_brightness;
 				currentMonitor.CurrentBrightness = current_brightness;
@@ -497,7 +501,10 @@ void MainWindowThread()
 								bool is_selected = (command.monitorIndex == i);
 
 								if (ImGui::Selectable(Monitor::PhysicalMonitorArray[i].Name.c_str(), is_selected))
+								{
 									command.monitorIndex = i;
+									command.brightnessValue = Monitor::PhysicalMonitorArray[command.monitorIndex].CurrentBrightness;
+								}
 								if (is_selected)
 									ImGui::SetItemDefaultFocus();
 							}
