@@ -302,9 +302,6 @@ namespace Monitor
 		GetNumberOfPhysicalMonitorsFromHMONITOR(hMonitor, &physicalMonitorsinCurrentHmonitor);
 		PHYSICAL_MONITOR* physicalMonitor = new PHYSICAL_MONITOR[physicalMonitorsinCurrentHmonitor];
 
-		if(PhysicalMonitorArray.size() == 0)
-			PhysicalMonitorArray.swap(std::vector<MonitorInfo>());
-
 		if (GetPhysicalMonitorsFromHMONITOR(hMonitor, physicalMonitorsinCurrentHmonitor, physicalMonitor))
 		{
 			for (int i = 0; i < physicalMonitorsinCurrentHmonitor; i++)
@@ -340,6 +337,12 @@ namespace Monitor
 		}
 		delete[] physicalMonitor;
 		return 1;
+	}
+
+	void ReloadMonitorArray()
+	{
+		PhysicalMonitorArray.swap(std::vector<MonitorInfo>());
+		EnumDisplayMonitors(NULL, NULL, Monitor::MonitorEnumProc, 0);
 	}
 
 	void SetBrightnessDispatch(ChangeBrightnessCommand& cmd)
@@ -379,31 +382,31 @@ namespace Monitor
 
 	// Pulls monitor brightness values every 5 hours
 	// Using this in case user changes brightness value using another app or osd settings
-	void PullBrightnessValues()
-	{
-		using clock = std::chrono::high_resolution_clock;
-		using namespace std::chrono_literals;
-
-		static clock::time_point last_pulling_time = clock::now();
-		clock::time_point current_time = clock::now();
-
-		if ((current_time - last_pulling_time) > 5h)
-		{
-			LOG("Auto updating current brightness values");
-			last_pulling_time = clock::now();
-
-			for (auto& element : PhysicalMonitorArray)
-			{
-				if (!element.DccAvailable) continue;
-
-				DWORD min, max, current;
-				while (!GetMonitorBrightness(element.Handle, &min, &current, &max))
-					std::this_thread::sleep_for(2s);
-
-				element.CurrentBrightness = current;
-			}
-		}
-	}
+	//void PullBrightnessValues()
+	//{
+	//	using clock = std::chrono::high_resolution_clock;
+	//	using namespace std::chrono_literals;
+	//
+	//	static clock::time_point last_pulling_time = clock::now();
+	//	clock::time_point current_time = clock::now();
+	//
+	//	if ((current_time - last_pulling_time) > 5h)
+	//	{
+	//		LOG("Auto updating current brightness values");
+	//		last_pulling_time = clock::now();
+	//
+	//		for (auto& element : PhysicalMonitorArray)
+	//		{
+	//			if (!element.DccAvailable) continue;
+	//
+	//			DWORD min, max, current;
+	//			while (!GetMonitorBrightness(element.Handle, &min, &current, &max))
+	//				std::this_thread::sleep_for(2s);
+	//
+	//			element.CurrentBrightness = current;
+	//		}
+	//	}
+	//}
 
 }
 
@@ -459,7 +462,7 @@ void MainWindowThread()
 	while (!glfwWindowShouldClose(window))
 	{
 		std::this_thread::sleep_for(std::chrono::milliseconds((int)(1000.0f / FPS) - 5));
-		Monitor::PullBrightnessValues();
+		//Monitor::PullBrightnessValues();
 		if (isMainWindowHidden) continue;
 
 		glfwPollEvents();
@@ -540,7 +543,7 @@ void MainWindowThread()
 					[&refreshing_monitor_list]()
 					{
 						refreshing_monitor_list = true;
-						EnumDisplayMonitors(NULL, NULL, Monitor::MonitorEnumProc, 0);
+						Monitor::ReloadMonitorArray();
 						refreshing_monitor_list = false;
 					}
 				}.detach();
